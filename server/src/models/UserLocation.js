@@ -107,6 +107,38 @@ const UserLocationSchema = new mongoose.Schema(
   }
 );
 
+// 2D planar geospatial index with custom bounds for HTML5 Canvas pixel space
+UserLocationSchema.index({ location: '2d' }, { min: -100000, max: 100000 });
+// Compound index (in MongoDB, '2d' MUST be the first field in a compound index):
+UserLocationSchema.index({ location: '2d', roomId: 1 }, { min: -100000, max: 100000 });
+
+/**
+ * Static method to find nearby avatars within a given Euclidean pixel radius.
+ *
+ * @param {string} roomId - Room identifier
+ * @param {number} x - Center X coordinate
+ * @param {number} y - Center Y coordinate
+ * @param {number} maxDistance - Maximum distance in pixels (e.g., 100)
+ * @param {string} [excludeUserId] - Optional user ID to exclude (e.g., self)
+ * @returns {Promise<Array>} List of nearby user location documents
+ */
+UserLocationSchema.statics.findNearbyUsers = function (roomId, x, y, maxDistance = 100, excludeUserId = null) {
+  const query = {
+    roomId,
+    isOnline: true,
+    location: {
+      $near: [x, y],
+      $maxDistance: maxDistance,
+    },
+  };
+
+  if (excludeUserId) {
+    query.userId = { $ne: excludeUserId };
+  }
+
+  return this.find(query).lean().exec();
+};
+
 const UserLocation = mongoose.model('UserLocation', UserLocationSchema);
 
 module.exports = UserLocation;
