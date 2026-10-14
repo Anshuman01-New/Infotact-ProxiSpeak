@@ -139,6 +139,51 @@ UserLocationSchema.statics.findNearbyUsers = function (roomId, x, y, maxDistance
   return this.find(query).lean().exec();
 };
 
+
+/**
+ * Static method to find users within a specific bounding box or polygon zone ($geoWithin).
+ * Useful for checking users inside private meeting rooms or sound zones.
+ *
+ * @param {string} roomId
+ * @param {Array<Array<number>>} polygonPoints - Array of [x, y] coordinates forming a closed polygon
+ * @returns {Promise<Array>}
+ */
+UserLocationSchema.statics.findUsersInZone = function (roomId, polygonPoints) {
+  return this.find({
+    roomId,
+    isOnline: true,
+    location: {
+      $geoWithin: {
+        $polygon: polygonPoints,
+      },
+    },
+  }).lean().exec();
+};
+
+/**
+ * Static method to upsert user position quickly on movement.
+ */
+UserLocationSchema.statics.updatePosition = async function (userId, socketId, roomId, x, y, username, avatarColor) {
+  const updateData = {
+    socketId,
+    roomId,
+    location: [x, y],
+    rawX: x,
+    rawY: y,
+    isOnline: true,
+    lastActive: new Date(),
+  };
+
+  if (username) updateData.username = username;
+  if (avatarColor) updateData.avatarColor = avatarColor;
+
+  return this.findOneAndUpdate(
+    { userId },
+    { $set: updateData },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+};
+
 const UserLocation = mongoose.model('UserLocation', UserLocationSchema);
 
 module.exports = UserLocation;
