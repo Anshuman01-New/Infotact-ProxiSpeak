@@ -1,0 +1,387 @@
+
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap");
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f5f7fb;
+  color: #1b2440;
+  font-family: "DM Sans", sans-serif;
+}
+
+button, input {
+  font: inherit;
+}
+
+.app {
+  max-width: 1440px;
+  margin: auto;
+  padding: 28px 5%;
+}
+
+.topbar, .brand, .connection, .welcome, .people-count,
+.workspace-heading, .office-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.topbar {
+  padding-bottom: 25px;
+  border-bottom: 1px solid #e4e8f1;
+}
+
+.brand {
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+.brand-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  color: white;
+  background: linear-gradient(135deg, #6965ed, #8a65e8);
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.brand h1, .brand p, .workspace-heading h3,
+.workspace-heading p, .welcome h2, .welcome p {
+  margin: 0;
+}
+
+.brand h1 {
+  font: 800 21px "Manrope", sans-serif;
+}
+
+.brand p {
+  color: #8a92a8;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.connection {
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 9px 13px;
+  background: white;
+  border: 1px solid #e6eaf2;
+  border-radius: 30px;
+  font-size: 13px;
+}
+
+.status-dot, .live-label span, .legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.online .status-dot, .live-label span {
+  background: #26b887;
+}
+
+.offline .status-dot {
+  background: #e9a23b;
+}
+
+.welcome {
+  gap: 20px;
+  padding: 35px 0 30px;
+}
+
+.eyebrow {
+  color: #7166e8;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  margin-bottom: 10px !important;
+}
+
+.welcome h2 {
+  font: 800 clamp(23px, 3vw, 34px) "Manrope", sans-serif;
+  letter-spacing: -1px;
+}
+
+.subtitle {
+  color: #828ba2;
+  font-size: 14px;
+  margin-top: 10px !important;
+}
+
+.people-count {
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 14px 18px;
+  background: white;
+  border: 1px solid #e8ebf3;
+  border-radius: 14px;
+  white-space: nowrap;
+}
+
+.people-icon {
+  font-size: 24px;
+}
+
+.people-count strong {
+  font-size: 20px;
+}
+
+.people-count span:last-child {
+  color: #858da2;
+  font-size: 12px;
+}
+
+.workspace {
+  padding: 23px;
+  background: white;
+  border: 1px solid #e7eaf2;
+  border-radius: 20px;
+  box-shadow: 0 10px 35px #1b244008;
+}
+
+.workspace-heading {
+  gap: 15px;
+  padding-bottom: 20px;
+}
+
+.workspace-heading h3 {
+  font: 700 17px "Manrope", sans-serif;
+}
+
+.workspace-heading p {
+  color: #9299aa;
+  font-size: 12px;
+  margin-top: 5px;
+}
+
+.live-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #23a97e;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.office {
+  position: relative;
+  width: 100%;
+  height: min(60vh, 520px);
+  min-height: 360px;
+  overflow: hidden;
+  border: 8px solid #e8e8f0;
+  border-radius: 12px;
+  background-color: #faf9f5;
+  background-image:
+    linear-gradient(#e7e8ee 1px, transparent 1px),
+    linear-gradient(90deg, #e7e8ee 1px, transparent 1px);
+  background-size: 28px 28px;
+  cursor: crosshair;
+  isolation: isolate;
+}
+
+.room {
+  position: absolute;
+  border: 2px solid #dedee9;
+  background: #f1f0f9;
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+.room-one {
+  left: 3%;
+  top: 8%;
+  width: 43%;
+  height: 53%;
+}
+
+.room-two {
+  left: 50%;
+  top: 8%;
+  width: 25%;
+  height: 53%;
+  background: #eff5f1;
+}
+
+.room-three {
+  left: 79%;
+  top: 8%;
+  width: 17%;
+  height: 53%;
+  background: #f9f0e8;
+}
+
+.room-label {
+  display: block;
+  margin: 12px;
+  color: #a0a2b5;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.meeting-table {
+  position: absolute;
+  left: 22%;
+  top: 38%;
+  width: 55%;
+  height: 35%;
+  border: 5px solid #d0c9f2;
+  border-radius: 18px;
+  background: #e1dcf7;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+}
+
+.meeting-table span {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #b6abe9;
+}
+
+.desk {
+  margin: 30px auto 0;
+  width: 65%;
+  height: 24%;
+  border: 2px solid #bcd8c8;
+  border-radius: 5px;
+  background: #d9ebdf;
+  display: grid;
+  place-items: center;
+  color: #8aaf99;
+  font-size: 9px;
+}
+
+.desk-two {
+  margin-top: 12px;
+}
+
+.sofa {
+  margin: 35px auto 0;
+  width: 70%;
+  height: 35px;
+  border: 5px solid #e8c6a8;
+  border-radius: 10px;
+  background: #f5d9c1;
+}
+
+.plant {
+  position: absolute;
+  bottom: 20px;
+  right: 18px;
+  font-size: 25px;
+}
+
+.avatar {
+  position: absolute;
+  z-index: 3;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  cursor: default;
+  transition: left 60ms linear, top 60ms linear;
+}
+
+.avatar-face {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  background: white;
+  border: 2px solid #aaa0f0;
+  border-radius: 50%;
+  box-shadow: 0 3px 9px #28245a20;
+  font-size: 21px;
+}
+
+.my-avatar .avatar-face {
+  border-color: #6e63ed;
+  box-shadow: 0 0 0 4px #7166e82b;
+}
+
+.avatar-name {
+  position: absolute;
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: #6358d9;
+  color: white;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.office-footer {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding-top: 16px;
+  color: #858da2;
+  font-size: 11px;
+}
+
+.office-footer > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot.yours {
+  background: #7166e8;
+}
+
+.legend-dot.others {
+  background: #aaa0f0;
+}
+
+.hint {
+  margin-left: auto;
+}
+
+@media (max-width: 650px) {
+  .app {
+    padding: 18px 4%;
+  }
+
+  .welcome {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .workspace {
+    padding: 12px;
+  }
+
+  .office {
+    min-height: 400px;
+  }
+
+  .room-one {
+    width: 50%;
+  }
+
+  .room-two {
+    left: 56%;
+    width: 39%;
+  }
+
+  .room-three {
+    display: none;
+  }
+
+  .hint {
+    margin-left: 0;
+  }
+}
