@@ -69,3 +69,41 @@ The backend enforces this via:
 2. `src/sockets/signalingHandler.js`: Proximity guard intercepts any `webrtc-offer` and rejects it with `OUT_OF_EARSHOT` if the distance is $> 100\text{px}$.
 
 ---
+
+### Acoustic Hysteresis & Preventing Boundary Oscillation
+
+#### The "Fence-Hopping" Problem:
+If the earshot cutoff is strictly $100.0\text{px}$, an avatar pacing back and forth near the boundary (e.g. moving between $99.5\text{px}$ and $100.5\text{px}$) would cause:
+- Rapid `peer-entered-earshot` $\rightarrow$ WebRTC Offer/Answer/ICE $\rightarrow$ Connection opened
+- 1 frame later: `peer-left-earshot` $\rightarrow$ Connection closed
+- 1 frame later: `peer-entered-earshot` $\rightarrow$ Connection opened again
+
+This "flapping" destroys WebRTC performance and introduces audible clicks.
+
+#### The Dual-Threshold Hysteresis Solution:
+Implement two distinct radii:
+- **Connect Radius ($R_{\text{connect}}$):** $95\text{px}$ (Peer must get within $95\text{px}$ to establish a connection).
+- **Disconnect Radius ($R_{\text{disconnect}}$):** $115\text{px}$ (Peer must move past $115\text{px}$ before connection is terminated).
+- **Hysteresis Buffer:** The $20\text{px}$ buffer zone prevents flapping.
+
+```mermaid
+flowchart LR
+    A["Avatar > 115px<br>(Disconnected)"] -- "Walks closer (d <= 95px)" --> B["Avatar in Range<br>(P2P Audio Connected)"]
+    B -- "Moves slightly (95px < d < 115px)" --> B
+    B -- "Steps away (d > 115px)" --> A
+```
+
+---
+
+### Soft Mute vs Hard Teardown
+
+To further optimize connection overhead:
+1. **Soft Mute (Between 90px and 120px):**
+   - When a peer steps slightly past earshot, do **not** immediately destroy the `RTCPeerConnection`.
+   - Set the `GainNode.gain.value = 0` (or disable the `MediaStreamTrack.enabled = false`).
+   - Keep the ICE/DTLS connection alive in a standby state for a 5-second grace period.
+   - If the user steps back into range, audio unmutes instantaneously with **zero signaling latency**.
+2. **Hard Teardown (Past 120px or after 5-second timeout):**
+   - If the peer stays outside range for $> 5$ seconds, close the `RTCPeerConnection` (`pc.close()`) to release hardware decoders and memory.
+
+---
