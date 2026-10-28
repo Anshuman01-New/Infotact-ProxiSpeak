@@ -107,3 +107,51 @@ To further optimize connection overhead:
    - If the peer stays outside range for $> 5$ seconds, close the `RTCPeerConnection` (`pc.close()`) to release hardware decoders and memory.
 
 ---
+
+### Implementation Roadmap in Code
+
+Here is how you can update `src/sockets/movementHandler.js` to implement dual-threshold hysteresis:
+
+```javascript
+// Add dual-threshold configuration
+const HYSTERESIS_ENTER_RADIUS = 95;  // px
+const HYSTERESIS_EXIT_RADIUS = 115;  // px
+
+function computeHysteresisTransitions(socketId, currentNearbyPeers) {
+  const currentSet = socketEarshotMap.get(socketId) || new Set();
+  const entered = [];
+  const left = [];
+
+  for (const peer of currentNearbyPeers) {
+    const isCurrentlyConnected = currentSet.has(peer.userId);
+
+    if (!isCurrentlyConnected && peer.distance <= HYSTERESIS_ENTER_RADIUS) {
+      // Connect trigger
+      currentSet.add(peer.userId);
+      entered.push(peer);
+    } else if (isCurrentlyConnected && peer.distance > HYSTERESIS_EXIT_RADIUS) {
+      // Disconnect trigger
+      currentSet.delete(peer.userId);
+      left.push(peer.userId);
+    }
+  }
+
+  return { entered, left };
+}
+```
+
+---
+
+### Long-Term Evolution: Selective Mesh vs SFU
+
+| Feature | Selective Proximity Mesh (Current Week 1-4) | SFU (Selective Forwarding Unit, e.g., Mediasoup) |
+| :--- | :--- | :--- |
+| **Server Bandwidth** | Zero audio bandwidth (audio is pure P2P) | High (audio routes through media server) |
+| **Server Cost** | Extremely low (Node.js only handles signaling) | Moderate (requires dedicated media relay servers) |
+| **Client Upload** | $K \times 40\text{ kbps}$ ($K \approx 3-5$ peers) | $1 \times 40\text{ kbps}$ (Only 1 upload stream to server!) |
+| **NAT Traversal** | Requires STUN/TURN for strict symmetric NATs | Guaranteed relay via SFU server IP |
+| **Max Cluster Size** | Comfortable up to 6–8 people in a single circle | Scalable to 50+ people in the exact same circle |
+
+**Recommendation:** Selective Proximity Mesh is the ideal, zero-infrastructure-cost architecture for Week 1–4. If future requirements call for a 30-person townhall meeting in a single conference room, integrate **Mediasoup** or **LiveKit** as a backend media router.
+
+---
