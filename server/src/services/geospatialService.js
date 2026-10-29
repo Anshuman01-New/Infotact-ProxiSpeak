@@ -278,8 +278,9 @@ function computeEarshotTransitions(previousPeerIds = [], currentNearbyPeers = []
 
 /**
  * Clusters users into physical conversation groups based on proximity.
- * Uses connected component graph clustering: if User A is within threshold of User B,
- * they belong to the same cluster.
+ * Uses connected component graph clustering: if User A is within threshold of User B, and User B is within threshold of User C, 
+ * then A, B, and C are clustered together.
+ * 
  *
  * @param {string} roomId
  * @param {number} [clusterThreshold=100]
