@@ -155,3 +155,71 @@ function computeHysteresisTransitions(socketId, currentNearbyPeers) {
 **Recommendation:** Selective Proximity Mesh is the ideal, zero-infrastructure-cost architecture for Week 1–4. If future requirements call for a 30-person townhall meeting in a single conference room, integrate **Mediasoup** or **LiveKit** as a backend media router.
 
 ---
+
+## 3. Part 2: Redis Pub/Sub Horizontal Socket.io Scaling
+
+### Single-Node Limitation
+
+By default, Socket.io stores all connected socket IDs and room maps in the memory of the single Node process:
+- When Node process 1 runs on CPU Core 1, and Node process 2 runs on CPU Core 2:
+- If Alice is connected to Process 1 and Bob is connected to Process 2:
+  `io.to("default-office").emit("player-moved", ...)` on Process 1 will **never reach Bob** on Process 2!
+
+```
+[Alice on Node 1] ──X──> (No communication) <──X── [Bob on Node 2]
+```
+
+---
+
+### Socket.io Redis Adapter Architecture
+
+The `@socket.io/redis-adapter` replaces the internal memory room store with Redis Pub/Sub:
+1. When Alice on Node 1 emits an event targeting room `"default-office"`:
+2. Node 1 publishes the event to Redis channel `socket.io#default-office#`.
+3. Node 2 and Node 3 (which are subscribed to that Redis channel) receive the payload.
+4. Node 2 broadcasts the event to its locally connected sockets (including Bob).
+
+```mermaid
+flowchart TD
+    Alice["Alice (Browser)"] <--> |WebSocket| Node1["Node Instance 1"]
+    Bob["Bob (Browser)"] <--> |WebSocket| Node2["Node Instance 2"]
+    Charlie["Charlie (Browser)"] <--> |WebSocket| Node3["Node Instance 3"]
+
+    Node1 <--> |Pub/Sub| Redis[("Redis Channel: socket.io#room#")]
+    Node2 <--> |Pub/Sub| Redis
+    Node3 <--> |Pub/Sub| Redis
+```
+
+---
+
+### Enabling Redis in ProxiSpeak
+
+ProxiSpeak has native, built-in support for Redis clustering in `src/config/redis.js`.
+
+#### Step 1: Update `.env`
+```env
+REDIS_ENABLED=true
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_PASSWORD=
+```
+
+#### Step 2: Code Mechanism (`src/config/redis.js`)
+```javascript
+const { createClient } = require('redis');
+const { createAdapter } = require('@socket.io/redis-adapter');
+
+async function setupRedisAdapter(io) {
+  if (!config.redis.enabled) return false;
+
+  const pubClient = createClient({ url: `redis://${config.redis.host}:${config.redis.port}` });
+  const subClient = pubClient.duplicate();
+
+  await Promise.all([pubClient.connect(), subClient.connect()]);
+  io.adapter(createAdapter(pubClient, subClient));
+  return true;
+}
+```
+When `REDIS_ENABLED=true`, ProxiSpeak automatically attaches this adapter during `initializeSocketServer()`.
+
+---
