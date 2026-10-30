@@ -223,3 +223,86 @@ async function setupRedisAdapter(io) {
 When `REDIS_ENABLED=true`, ProxiSpeak automatically attaches this adapter during `initializeSocketServer()`.
 
 ---
+
+### Distributed Spatial State: Redis Hashes & Redis Geo
+
+In a single-instance setup, `activeRoomSpatialState` is an in-memory JavaScript `Map`. In a multi-instance cluster, spatial state must be globally queryable.
+
+#### 1. Redis Hashes for User Presence
+Store each user's state in a Redis Hash:
+```
+HSET proxispeak:room:default-office:users user_alice '{"socketId":"sock1","x":250,"y":250,"username":"Alice"}'
+```
+
+#### 2. Redis Geospatial Index (`GEOADD` & `GEOSEARCH`)
+Redis provides native geospatial commands that operate in sub-millisecond in-memory speeds:
+
+```bash
+# Add avatar coordinates to room spatial index
+GEOADD proxispeak:room:default-office:geo 250 250 user_alice
+GEOADD proxispeak:room:default-office:geo 280 250 user_bob
+
+# Find all users within 100 meters/pixels of Alice (250, 250)
+GEOSEARCH proxispeak:room:default-office:geo FROMLONLAT 250 250 BYRADIUS 100 M WITHDIST WITHCOORD
+```
+
+#### Node.js Implementation Snippet:
+```javascript
+// Adding position to Redis Geo
+await redisClient.geoAdd('room:default-office:geo', {
+  member: userId,
+  longitude: x, // Redis treats longitude as X
+  latitude: y,  // Redis treats latitude as Y
+});
+
+// Querying nearby users across all instances in < 1ms
+const nearby = await redisClient.geoSearch(
+  'room:default-office:geo',
+  { longitude: x, latitude: y },
+  { radius: 100, unit: 'm' },
+  ['WITHDIST', 'WITHCOORD']
+);
+```
+
+---
+
+### Production Nginx Reverse Proxy & Sticky Sessions
+
+Socket.io initially connects via HTTP long-polling and upgrades to WebSocket. Because HTTP long-polling involves multiple requests, **all requests from a given client must hit the same Node instance** (Session Affinity / Sticky Sessions).
+
+#### `nginx.conf`:
+```nginx
+upstream proxispeak_nodes {
+    # ip_hash ensures sticky sessions based on client IP
+    ip_hash;
+
+    server 127.0.0.1:5001;
+    server 127.0.0.1:5002;
+    server 127.0.0.1:5003;
+}
+
+server {
+    listen 80;
+    server_name office.proxispeak.local;
+
+    location / {
+        proxy_pass http://proxispeak_nodes;
+        proxy_http_version 1.1;
+
+        # WebSocket Upgrade Headers
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Timeout settings for long-lived WebSocket connections
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+}
+```
+
+---
