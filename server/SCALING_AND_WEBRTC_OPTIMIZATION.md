@@ -306,3 +306,99 @@ server {
 ```
 
 ---
+### Complete Multi-Instance Docker Compose Setup
+
+To launch a production-grade 3-node ProxiSpeak cluster with Redis, MongoDB, and Nginx:
+
+`docker-compose.yml`:
+```yaml
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:8.0
+    restart: always
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+
+  node1:
+    build: .
+    restart: always
+    environment:
+      - PORT=5001
+      - MONGODB_URI=mongodb://mongodb:27017/proxispeak
+      - REDIS_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - mongodb
+      - redis
+
+  node2:
+    build: .
+    restart: always
+    environment:
+      - PORT=5002
+      - MONGODB_URI=mongodb://mongodb:27017/proxispeak
+      - REDIS_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - mongodb
+      - redis
+
+  node3:
+    build: .
+    restart: always
+    environment:
+      - PORT=5003
+      - MONGODB_URI=mongodb://mongodb:27017/proxispeak
+      - REDIS_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - mongodb
+      - redis
+
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - node1
+      - node2
+      - node3
+
+volumes:
+  mongo_data:
+```
+
+---
+
+## 4. Verification & Load Testing Plan
+
+When running the cluster:
+
+1. **Verify Redis Inter-Node Pub/Sub:**
+   - Connect Client A to `http://localhost:5001`.
+   - Connect Client B to `http://localhost:5002`.
+   - Move Client A (`player-move`).
+   - Verify that Client B receives `player-moved` seamlessly through the Redis adapter.
+2. **Verify Proximity WebRTC Routing Across Instances:**
+   - Move Client A within 100px of Client B.
+   - Verify both clients receive `peer-entered-earshot`.
+   - Send `webrtc-offer` from Client A on Node 1; verify Client B on Node 2 receives the offer and sends back `webrtc-answer`.
+3. **Execute Latency Audit Across Cluster:**
+   - Run `npm run audit` or `GET /api/spatial/audit`.
+   - Verify that P95 spatial query latency remains strictly under 20ms under heavy simulated load.
