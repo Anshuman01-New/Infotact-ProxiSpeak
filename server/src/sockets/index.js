@@ -8,7 +8,7 @@
 const { Server } = require('socket.io');
 const config = require('../config/environment');
 const { setupRedisAdapter } = require('../config/redis');
-const { registerMovementHandler } = require('./movementHandler');
+const { registerMovementHandler, handleUserProximityUpdate } = require('./movementHandler');
 const { registerSignalingHandler } = require('./signalingHandler');
 const {
   setAvatarPosition,
@@ -26,7 +26,12 @@ const Room = require('../models/Room');
 async function initializeSocketServer(httpServer) {
   const io = new Server(httpServer, {
     cors: {
-      origin: config.clientOrigins,
+      origin: (origin, callback) => {
+        if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) || config.clientOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+        return callback(null, true);
+      },
       methods: ['GET', 'POST'],
       credentials: true,
     },
@@ -123,6 +128,9 @@ async function initializeSocketServer(httpServer) {
           isMuted: avatar.isMuted,
           isDeafened: avatar.isDeafened,
         });
+
+        // Trigger immediate proximity and earshot evaluation for joining user
+        await handleUserProximityUpdate(io, socket, targetRoomId, avatar);
 
         console.log(`[Room Join] User "${avatar.username}" entered room "${targetRoomId}" at (${avatar.x}, ${avatar.y})`);
       } catch (err) {

@@ -18,7 +18,13 @@ const app = express();
 // Standard middleware
 app.use(
   cors({
-    origin: config.clientOrigins,
+    origin: (origin, callback) => {
+      // Allow any local origin (localhost, 127.0.0.1, any port) or configured clientOrigins
+      if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) || config.clientOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
     credentials: true,
   })
 );
