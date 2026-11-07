@@ -25,6 +25,119 @@ const config = require('../config/environment');
 const socketEarshotMap = new Map();
 
 /**
+ * Evaluates proximity transitions and emits earshot events.
+ * Used during both initial room entry and subsequent movements.
+ *
+ * @param {import('socket.io').Server} io
+ * @param {import('socket.io').Socket} socket
+ * @param {string} activeRoomId
+ * @param {object} avatar
+ */
+async function handleUserProximityUpdate(io, socket, activeRoomId, avatar) {
+  // 1. Broadcast avatar's visual position to everyone in the room (Canvas rendering)
+  socket.to(activeRoomId).emit('player-moved', {
+    userId: avatar.userId,
+    socketId: socket.id,
+    username: avatar.username,
+    avatarColor: avatar.avatarColor,
+    x: avatar.x,
+    y: avatar.y,
+    isMuted: avatar.isMuted,
+    isDeafened: avatar.isDeafened,
+  });
+
+  // 2. Proximity calculation for Spatial Audio & WebRTC filtering
+  const nearbyPeers = findNearbyPeersInMemory(
+    activeRoomId,
+    avatar.x,
+    avatar.y,
+    config.defaultEarshotRadius,
+    avatar.userId
+  );
+
+  // Enhance nearby peers with sound obstacle occlusion damping
+  for (const peer of nearbyPeers) {
+    const occlusion = await calculateSoundOcclusion(
+      activeRoomId,
+      avatar.x,
+      avatar.y,
+      peer.x,
+      peer.y
+    );
+    peer.isObstructed = occlusion.isObstructed;
+    peer.occlusionMultiplier = occlusion.transmissionMultiplier;
+    // Total effective gain = distance gain * obstacle transmission multiplier
+    peer.effectiveGain = Math.round(peer.gain * occlusion.transmissionMultiplier * 1000) / 1000;
+  }
+
+  // 3. Evaluate Earshot Transitions (Entering vs Leaving 100px radius)
+  const previousPeers = socketEarshotMap.get(socket.id) || new Set();
+  const { entered, left, active } = computeEarshotTransitions(
+    previousPeers,
+    nearbyPeers
+  );
+
+  // Update socket's earshot map
+  const currentPeerIdSet = new Set(nearbyPeers.map((p) => p.userId));
+  socketEarshotMap.set(socket.id, currentPeerIdSet);
+
+  // 4. Notify about newly entered peers (Trigger WebRTC P2P connection handshake)
+  for (const newPeer of entered) {
+    // Keep peer's earshot tracker in sync
+    const peerSet = socketEarshotMap.get(newPeer.socketId);
+    if (peerSet) peerSet.add(avatar.userId);
+
+    // Tell moving user to initiate connection to newPeer
+    socket.emit('peer-entered-earshot', {
+      peerId: newPeer.userId,
+      peerSocketId: newPeer.socketId,
+      username: newPeer.username,
+      distance: newPeer.distance,
+      gain: newPeer.effectiveGain,
+      pan: newPeer.pan,
+      // Initiator convention: lower lexical string id initiates WebRTC offer to avoid glare collision
+      isInitiator: avatar.userId < newPeer.userId,
+    });
+
+    // Also notify the other peer that moving user entered their earshot
+    io.to(newPeer.socketId).emit('peer-entered-earshot', {
+      peerId: avatar.userId,
+      peerSocketId: socket.id,
+      username: avatar.username,
+      distance: newPeer.distance,
+      gain: newPeer.effectiveGain,
+      pan: -newPeer.pan, // Opposite stereo panning for listener
+      isInitiator: newPeer.userId < avatar.userId,
+    });
+  }
+
+  // 5. Notify about peers who left earshot (Trigger WebRTC connection teardown / mute)
+  for (const leftPeerId of left) {
+    socket.emit('peer-left-earshot', {
+      peerId: leftPeerId,
+    });
+
+    // Find left peer's socket if active in room
+    const roomPeers = findNearbyPeersInMemory(activeRoomId, 0, 0, 100000);
+    const leftPeer = roomPeers.find((p) => p.userId === leftPeerId);
+    if (leftPeer) {
+      const peerSet = socketEarshotMap.get(leftPeer.socketId);
+      if (peerSet) peerSet.delete(avatar.userId);
+
+      io.to(leftPeer.socketId).emit('peer-left-earshot', {
+        peerId: avatar.userId,
+      });
+    }
+  }
+
+  // 6. Send continuous proximity & spatial audio telemetry to the moving user
+  socket.emit('proximity-update', {
+    nearbyPeers: active,
+    earshotRadius: config.defaultEarshotRadius,
+  });
+}
+
+/**
  * Registers avatar movement and proximity event listeners on a socket.
  *
  * @param {import('socket.io').Server} io - Socket.io Server instance
@@ -58,100 +171,7 @@ function registerMovementHandler(io, socket) {
         earshotRadius: config.defaultEarshotRadius,
       });
 
-      // 1. Broadcast avatar's visual position to everyone in the room (Canvas rendering)
-      socket.to(activeRoomId).emit('player-moved', {
-        userId,
-        socketId: socket.id,
-        username: avatar.username,
-        avatarColor: avatar.avatarColor,
-        x: avatar.x,
-        y: avatar.y,
-        isMuted: avatar.isMuted,
-        isDeafened: avatar.isDeafened,
-      });
-
-      // 2. Proximity calculation for Spatial Audio & WebRTC filtering
-      const nearbyPeers = findNearbyPeersInMemory(
-        activeRoomId,
-        avatar.x,
-        avatar.y,
-        config.defaultEarshotRadius,
-        userId
-      );
-
-      // Enhance nearby peers with sound obstacle occlusion damping
-      for (const peer of nearbyPeers) {
-        const occlusion = await calculateSoundOcclusion(
-          activeRoomId,
-          avatar.x,
-          avatar.y,
-          peer.x,
-          peer.y
-        );
-        peer.isObstructed = occlusion.isObstructed;
-        peer.occlusionMultiplier = occlusion.transmissionMultiplier;
-        // Total effective gain = distance gain * obstacle transmission multiplier
-        peer.effectiveGain = Math.round(peer.gain * occlusion.transmissionMultiplier * 1000) / 1000;
-      }
-
-      // 3. Evaluate Earshot Transitions (Entering vs Leaving 100px radius)
-      const previousPeers = socketEarshotMap.get(socket.id) || new Set();
-      const { entered, left, active } = computeEarshotTransitions(
-        previousPeers,
-        nearbyPeers
-      );
-
-      // Update socket's earshot map
-      const currentPeerIdSet = new Set(nearbyPeers.map((p) => p.userId));
-      socketEarshotMap.set(socket.id, currentPeerIdSet);
-
-      // 4. Notify about newly entered peers (Trigger WebRTC P2P connection handshake)
-      for (const newPeer of entered) {
-        // Tell moving user to initiate connection to newPeer
-        socket.emit('peer-entered-earshot', {
-          peerId: newPeer.userId,
-          peerSocketId: newPeer.socketId,
-          username: newPeer.username,
-          distance: newPeer.distance,
-          gain: newPeer.effectiveGain,
-          pan: newPeer.pan,
-          // Initiator convention: lower lexical string id initiates WebRTC offer to avoid glare collision
-          isInitiator: userId < newPeer.userId,
-        });
-
-        // Also notify the other peer that moving user entered their earshot
-        io.to(newPeer.socketId).emit('peer-entered-earshot', {
-          peerId: userId,
-          peerSocketId: socket.id,
-          username: avatar.username,
-          distance: newPeer.distance,
-          gain: newPeer.effectiveGain,
-          pan: -newPeer.pan, // Opposite stereo panning for the listener
-          isInitiator: newPeer.userId < userId,
-        });
-      }
-
-      // 5. Notify about peers who left earshot (Trigger WebRTC connection teardown / mute)
-      for (const leftPeerId of left) {
-        socket.emit('peer-left-earshot', {
-          peerId: leftPeerId,
-        });
-
-        // Find left peer's socket if active in room
-        const roomPeers = findNearbyPeersInMemory(activeRoomId, 0, 0, 100000);
-        const leftPeer = roomPeers.find((p) => p.userId === leftPeerId);
-        if (leftPeer) {
-          io.to(leftPeer.socketId).emit('peer-left-earshot', {
-            peerId: userId,
-          });
-        }
-      }
-
-      // 6. Send continuous proximity & spatial audio telemetry to the moving user
-      socket.emit('proximity-update', {
-        nearbyPeers: active,
-        earshotRadius: config.defaultEarshotRadius,
-      });
+      await handleUserProximityUpdate(io, socket, activeRoomId, avatar);
     } catch (error) {
       console.error(`[MovementHandler Error] Socket ${socket.id}:`, error.message);
     }
@@ -169,5 +189,6 @@ function getSocketEarshot(socketId) {
 
 module.exports = {
   registerMovementHandler,
+  handleUserProximityUpdate,
   getSocketEarshot,
 };
