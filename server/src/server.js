@@ -1,98 +1,79 @@
+/**
+ * ProxiSpeak - Server Entry Point
+ *
+ * Boots HTTP and WebSocket servers, connects to MongoDB, initializes Redis adapters,
+ * and sets up graceful process lifecycle management.
+ */
 
-const express = require("express");
-const cors = require("cors");
-const http = require("http");
-const { Server } = require("socket.io");
-require("dotenv").config();
+const http = require('http');
+const app = require('./app');
+const config = require('./config/environment');
+const { connectDB, disconnectDB } = require('./config/db');
+const { initializeSocketServer } = require('./sockets');
+const { closeRedis } = require('./config/redis');
 
-const app = express();
-const httpServer = http.createServer(app);
+// Create standard HTTP server wrapping Express
+const server = http.createServer(app);
 
-app.use(cors());
-app.use(express.json());
+let io;
 
-const PORT = process.env.PORT || 3000;
+/**
+ * Boots the ProxiSpeak server.
+ */
+async function startServer() {
+  try {
+    // 1. Connect to MongoDB database
+    await connectDB();
 
-// Create the Socket.IO server
-const io = new Server(httpServer, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
-});
+    // 2. Initialize Socket.io server with real-time signaling & movement
+    io = await initializeSocketServer(server);
 
-// Store connected users and their positions in memory
-const avatars = new Map();
-
-// Home route
-app.get("/", (req, res) => {
-    res.send("Welcome to ProxiSpeak Backend!");
-});
-
-// Health check route
-app.get("/health", (req, res) => {
-    res.json({
-        success: true,
-        message: "ProxiSpeak backend is running!"
+    // 3. Start listening on configured port
+    server.listen(config.port, () => {
+      console.log('====================================================');
+      console.log(`🚀 ProxiSpeak Backend Engine running on port ${config.port}`);
+      console.log(`📡 Environment: ${config.nodeEnv}`);
+      console.log(`🎯 Default Earshot Radius: ${config.defaultEarshotRadius}px`);
+      console.log(`⏱️ Spatial Audit Target: < ${config.spatialAuditMaxLatencyMs}ms`);
+      console.log(`🌐 Allowed Client Origins: ${config.clientOrigins.join(', ')}`);
+      console.log(`🩺 Health check available at: http://localhost:${config.port}/health`);
+      console.log('====================================================');
     });
-});
+  } catch (error) {
+    console.error('Fatal error during server startup:', error);
+    process.exit(1);
+  }
+}
 
-// Real-time communication
-io.on("connection", (socket) => {
-    console.log("User connected:", socket.id);
+/**
+ * Graceful termination handler.
+ */
+async function shutdown(signal) {
+  console.log(`\n[Process] Received ${signal}. Commencing graceful shutdown...`);
 
-    // Give the new user the current avatars
-    socket.emit("existing-avatars", Array.from(avatars.values()));
-
-    // Register this user's initial position
-    const avatar = {
-        id: socket.id,
-        x: 100,
-        y: 100
-    };
-
-    avatars.set(socket.id, avatar);
-
-    // Notify other users
-    socket.broadcast.emit("avatar-joined", avatar);
-
-    // Receive and broadcast movement
-    socket.on("move-avatar", (position) => {
-        if (!position) return;
-
-        const { x, y } = position;
-
-        if (
-            typeof x !== "number" ||
-            typeof y !== "number" ||
-            !Number.isFinite(x) ||
-            !Number.isFinite(y)
-        ) {
-            return;
-        }
-
-        // Keep coordinates within a basic virtual-office boundary
-        const updatedAvatar = {
-            id: socket.id,
-            x: Math.max(0, Math.min(1000, x)),
-            y: Math.max(0, Math.min(1000, y))
-        };
-
-        avatars.set(socket.id, updatedAvatar);
-
-        io.emit("avatar-moved", updatedAvatar);
+  if (server) {
+    server.close(() => {
+      console.log('[Server] HTTP and WebSocket server stopped.');
     });
+  }
 
-    // Remove disconnected users
-    socket.on("disconnect", () => {
-        console.log("User disconnected:", socket.id);
+  await closeRedis();
+  await disconnectDB();
 
-        avatars.delete(socket.id);
-        io.emit("avatar-left", socket.id);
-    });
-});
+  console.log('[Process] Cleanup complete. Exiting.');
+  process.exit(0);
+}
 
-// Start the HTTP and Socket.IO server
-httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`ProxiSpeak server running on port ${PORT}`);
-});
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+// Start server if executed directly
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = {
+  app,
+  server,
+  startServer,
+};
